@@ -19,22 +19,29 @@ namespace SiloSimpleHost
     /// </summary>
     public class Program
     {
+        /// <summary>
+        /// just empty type of our new custom strategy
+        /// </summary>
         [Serializable]
-        public class RoundRobinStrategy : PlacementStrategy
+        public class RoundRobinPlacementStrategy : PlacementStrategy
         {
 
         }
-
+        /// <summary>
+        /// allows to mark grain with specific placement strategy
+        /// </summary>
         [AttributeUsage(AttributeTargets.Class, AllowMultiple = false)]
         public sealed class RoundRobinStrategyAttribute : PlacementAttribute
         {
-            public RoundRobinStrategyAttribute() : base(new RoundRobinStrategy())
+            public RoundRobinStrategyAttribute() : base(new RoundRobinPlacementStrategy())
             {
             }
         }
 
-
-        public class RoundRobinDirector : IPlacementDirector<RoundRobinStrategy>
+        /// <summary>
+        /// Director manages placement of the grain into the silo
+        /// </summary>
+        public class RoundRobinPlacementDirector : IPlacementDirector<RoundRobinPlacementStrategy>
         {
             private ConcurrentQueue<SiloAddress> unusedSilos = new ConcurrentQueue<SiloAddress>();
             private ConcurrentQueue<SiloAddress> usedSilos = new ConcurrentQueue<SiloAddress>();
@@ -83,40 +90,46 @@ namespace SiloSimpleHost
             }
         }
 
+        /// <summary>
+        /// configured type to inject all our custom services
+        /// </summary>
         public class TestStartup
         {
             public IServiceProvider ConfigureServices(IServiceCollection services)
             {
-                services.AddSingleton<IPlacementDirector<RoundRobinStrategy>, RoundRobinDirector>();
+                services.AddSingleton<IPlacementDirector<RoundRobinPlacementStrategy>, RoundRobinPlacementDirector>();
 
                 return services.BuildServiceProvider();
             }
         }
         static void Main(string[] args)
         {
-        // First, configure and start a local silo
-        var siloConfig = ClusterConfiguration.LocalhostPrimarySilo();
-            siloConfig.UseStartupType<TestStartup>();
-        var silo = new SiloHost("TestSilo", siloConfig);
-        silo.InitializeOrleansSilo();
+            // First, configure and start a local silo
+            var siloConfig = ClusterConfiguration.LocalhostPrimarySilo();
+
+            siloConfig.UseStartupType<TestStartup>(); // inject our custom service
+
+
+            var silo = new SiloHost("TestSilo", siloConfig);
+            silo.InitializeOrleansSilo();
             silo.StartOrleansSilo();
 
             Console.WriteLine("Silo started.");
 
             // Then configure and connect a client.
             var clientConfig = ClientConfiguration.LocalhostSilo();
-        var client = new ClientBuilder().UseConfiguration(clientConfig).Build();
-        client.Connect().Wait();
+            var client = new ClientBuilder().UseConfiguration(clientConfig).Build();
+            client.Connect().Wait();
 
-        Console.WriteLine("Client connected.");
+            Console.WriteLine("Client connected.");
             //
             // This is the place for your test code.
             //
 
 
             var hiGrain = client.GetGrain<IHello>(0);
-        var result = hiGrain.SayHello("pik pik").Result;
-        Console.WriteLine(result);
+            var result = hiGrain.SayHello("pik pik").Result;
+            Console.WriteLine(result);
 
             Console.WriteLine("\nPress Enter to terminate...");
             Console.ReadLine();
@@ -125,5 +138,5 @@ namespace SiloSimpleHost
             client.Close();
             silo.ShutdownOrleansSilo();
         }
-}
+    }
 }
