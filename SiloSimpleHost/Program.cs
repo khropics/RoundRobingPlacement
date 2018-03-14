@@ -67,6 +67,10 @@ namespace SiloSimpleHost
                 //TODO: check if siloAddres is still compatible
                 SiloAddress nextSiloAddress = null;
                 unusedSilos.TryDequeue(out nextSiloAddress);
+                if (nextSiloAddress ==null)
+                {
+                    throw new ArgumentNullException("Couldn't find a compatible silo for grain");
+                }
                 usedSilos.Enqueue(nextSiloAddress);
 
                 return Task.FromResult(nextSiloAddress);
