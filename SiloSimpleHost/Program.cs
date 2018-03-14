@@ -43,8 +43,8 @@ namespace SiloSimpleHost
         /// </summary>
         public class RoundRobinPlacementDirector : IPlacementDirector<RoundRobinPlacementStrategy>
         {
-            private ConcurrentQueue<SiloAddress> unusedSilos = new ConcurrentQueue<SiloAddress>();
-            private ConcurrentQueue<SiloAddress> usedSilos = new ConcurrentQueue<SiloAddress>();
+            private static ConcurrentQueue<SiloAddress> unusedSilos = new ConcurrentQueue<SiloAddress>();
+            private static ConcurrentQueue<SiloAddress> usedSilos = new ConcurrentQueue<SiloAddress>();
             public Task<SiloAddress> OnAddActivation(PlacementStrategy strategy, PlacementTarget target, IPlacementContext context)
             {
                 if (unusedSilos.Count == 0 && usedSilos.Count == 0)
@@ -132,6 +132,15 @@ namespace SiloSimpleHost
 
 
             var hiGrain = client.GetGrain<IHello>(0);
+            var hiGrain1 = client.GetGrain<IHello>(1);
+            var hiGrain2 = client.GetGrain<IHello>(2);
+            Console.WriteLine("0.");
+            hiGrain.SayHello("ss");
+            Console.WriteLine("1.");
+            hiGrain1.SayHello("ss1");
+            Console.WriteLine("2.");
+            hiGrain2.SayHello("ss2");
+            Console.WriteLine("3.");
             var result = hiGrain.SayHello("pik pik").Result;
             Console.WriteLine(result);
 
