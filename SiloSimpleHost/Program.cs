@@ -10,6 +10,7 @@ using System.Threading.Tasks;
 using System.Linq;
 using System.Collections.Generic;
 using System.Collections.Concurrent;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace SiloSimpleHost
 {
@@ -32,7 +33,7 @@ namespace SiloSimpleHost
             }
         }
 
-        
+
         public class RoundRobinDirector : IPlacementDirector<RoundRobinStrategy>
         {
             private ConcurrentQueue<SiloAddress> unusedSilos = new ConcurrentQueue<SiloAddress>();
@@ -82,31 +83,40 @@ namespace SiloSimpleHost
             }
         }
 
+        public class TestStartup
+        {
+            public IServiceProvider ConfigureServices(IServiceCollection services)
+            {
+                services.AddSingleton<IPlacementDirector<RoundRobinStrategy>, RoundRobinDirector>();
+
+                return services.BuildServiceProvider();
+            }
+        }
         static void Main(string[] args)
         {
-
-            // First, configure and start a local silo
-            var siloConfig = ClusterConfiguration.LocalhostPrimarySilo();
-            var silo = new SiloHost("TestSilo", siloConfig);
-            silo.InitializeOrleansSilo();
+        // First, configure and start a local silo
+        var siloConfig = ClusterConfiguration.LocalhostPrimarySilo();
+            siloConfig.UseStartupType<TestStartup>();
+        var silo = new SiloHost("TestSilo", siloConfig);
+        silo.InitializeOrleansSilo();
             silo.StartOrleansSilo();
 
             Console.WriteLine("Silo started.");
 
             // Then configure and connect a client.
             var clientConfig = ClientConfiguration.LocalhostSilo();
-            var client = new ClientBuilder().UseConfiguration(clientConfig).Build();
-            client.Connect().Wait();
+        var client = new ClientBuilder().UseConfiguration(clientConfig).Build();
+        client.Connect().Wait();
 
-            Console.WriteLine("Client connected.");
+        Console.WriteLine("Client connected.");
             //
             // This is the place for your test code.
             //
 
 
             var hiGrain = client.GetGrain<IHello>(0);
-            var result = hiGrain.SayHello("pik pik").Result;
-            Console.WriteLine(result);
+        var result = hiGrain.SayHello("pik pik").Result;
+        Console.WriteLine(result);
 
             Console.WriteLine("\nPress Enter to terminate...");
             Console.ReadLine();
@@ -115,5 +125,5 @@ namespace SiloSimpleHost
             client.Close();
             silo.ShutdownOrleansSilo();
         }
-    }
+}
 }
