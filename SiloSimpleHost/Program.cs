@@ -43,35 +43,33 @@ namespace SiloSimpleHost
         /// </summary>
         public class RoundRobinPlacementDirector : IPlacementDirector<RoundRobinPlacementStrategy>
         {
-            private static ConcurrentQueue<SiloAddress> unusedSilos = new ConcurrentQueue<SiloAddress>();
-            private static ConcurrentQueue<SiloAddress> usedSilos = new ConcurrentQueue<SiloAddress>();
+            private static ConcurrentDictionary<SiloAddress, ulong> avaliableSilos = new ConcurrentDictionary<SiloAddress, ulong>();
+            public static ulong GetStats()
+            {
+                return avaliableSilos.First().Value;
+            }
             public Task<SiloAddress> OnAddActivation(PlacementStrategy strategy, PlacementTarget target, IPlacementContext context)
             {
-                if (unusedSilos.Count == 0 && usedSilos.Count == 0)
-                {
-                    var silos = context.GetCompatibleSilos(target).OrderBy(x => x).ToArray();
-                    foreach (var siloAddress in silos)
-                    {
-                        unusedSilos.Enqueue(siloAddress);
-                    }
-                }
-                if (unusedSilos.Count == 0 && usedSilos.Count > 0)
-                {
-                    //check if all usedSilos are compatible
-                    //var additionalSilos = context.GetCompatibleSilos(target).OrderBy(x => x).ToArray();
+                /*
+                 1. always get list of available silos and try to add them to dictionary as they can change on fly possibly
+                 2. get least silo
+                 3. increment silo counter
+                 4. always await
+                 */
 
-                    unusedSilos = new ConcurrentQueue<SiloAddress>(usedSilos);
-                    usedSilos = new ConcurrentQueue<SiloAddress>();
+                //fill it with silos/ alwa
+                var globalSilos = context.GetCompatibleSilos(target);
+
+                foreach (var silo in globalSilos)
+                {
+                    avaliableSilos.TryAdd(silo, 0L);
                 }
 
                 //TODO: check if siloAddres is still compatible
                 SiloAddress nextSiloAddress = null;
-                unusedSilos.TryDequeue(out nextSiloAddress);
-                if (nextSiloAddress ==null)
-                {
-                    throw new ArgumentNullException("Couldn't find a compatible silo for grain");
-                }
-                usedSilos.Enqueue(nextSiloAddress);
+                nextSiloAddress = avaliableSilos.OrderBy(x => x.Value).First().Key; //get least loaded silo
+
+                avaliableSilos[nextSiloAddress]++;  //increment usage of silo
 
                 return Task.FromResult(nextSiloAddress);
 
@@ -90,7 +88,8 @@ namespace SiloSimpleHost
         {
             public Task<string> SayHello(string msg)
             {
-                return Task.FromResult(string.Format("Wololo {0}", msg));
+                var ss = string.Format("Wololo {0}", msg);
+                return Task.FromResult(ss);
             }
         }
 
@@ -106,6 +105,35 @@ namespace SiloSimpleHost
                 return services.BuildServiceProvider();
             }
         }
+
+
+        static async Task DoTheGoodJob(IClusterClient client, int i)
+        {
+
+
+
+            var hiGrain = client.GetGrain<IHello>(30000 + i);
+            var hiGrain2 = client.GetGrain<IHello>(40000 + i);
+            var hiGrain3 = client.GetGrain<IHello>(50000 + i);
+            await hiGrain.SayHello("a");
+            await hiGrain2.SayHello("B");
+            await hiGrain3.SayHello("C");
+
+        }
+
+
+        static async Task DoTheBadJob(IClusterClient client, int i)
+        {
+
+
+            var hiGrain = client.GetGrain<IHello>(i);
+            var hiGrain2 = client.GetGrain<IHello>(10000 + i);
+            var hiGrain3 = client.GetGrain<IHello>(20000 + i);
+            await hiGrain.SayHello(string.Format("i'm here number {0}", i));
+            await hiGrain2.SayHello(string.Format("i'm here number {0}", i + 100));
+            await hiGrain3.SayHello(string.Format("i'm here number {0}", i + 200));
+
+        }
         static void Main(string[] args)
         {
             // First, configure and start a local silo
@@ -119,36 +147,47 @@ namespace SiloSimpleHost
             silo.StartOrleansSilo();
 
             Console.WriteLine("Silo started.");
-
             // Then configure and connect a client.
             var clientConfig = ClientConfiguration.LocalhostSilo();
             var client = new ClientBuilder().UseConfiguration(clientConfig).Build();
             client.Connect().Wait();
 
-            Console.WriteLine("Client connected.");
-            //
-            // This is the place for your test code.
-            //
+
+            Task.Run(async () =>
+            {
+                for (var i = 1; i <= 5000; i++)
+                {
+
+                    await DoTheGoodJob(client, i);
+                }
+            }).ContinueWith(async prev =>
+            {
+                for (var i = 1; i <= 5000; i++)
+                {
+
+                    await DoTheBadJob(client, i);
+                }
+            });
+
+            //if unccomment this line we'll get messed number of activations
+            //Task.Run(async () =>
+            //{
+            //    for (var i = 1; i <= 5000; i++)
+            //    {
+
+            //        await DoTheBadJob(client, i);
+            //    }
+            //});
 
 
-            var hiGrain = client.GetGrain<IHello>(0);
-            var hiGrain1 = client.GetGrain<IHello>(1);
-            var hiGrain2 = client.GetGrain<IHello>(2);
-            Console.WriteLine("0.");
-            hiGrain.SayHello("ss");
-            Console.WriteLine("1.");
-            hiGrain1.SayHello("ss1");
-            Console.WriteLine("2.");
-            hiGrain2.SayHello("ss2");
-            Console.WriteLine("3.");
-            var result = hiGrain.SayHello("pik pik").Result;
-            Console.WriteLine(result);
 
             Console.WriteLine("\nPress Enter to terminate...");
             Console.ReadLine();
-
+            Console.WriteLine("Using async we have {0} of 30000 placements", RoundRobinPlacementDirector.GetStats());
             // Shut down
             client.Close();
+
+            RoundRobinPlacementDirector.GetStats();
             silo.ShutdownOrleansSilo();
         }
     }
