@@ -67,9 +67,12 @@ namespace SiloSimpleHost
 
                 //TODO: check if siloAddres is still compatible
                 SiloAddress nextSiloAddress = null;
-                nextSiloAddress = avaliableSilos.OrderBy(x => x.Value).First().Key; //get least loaded silo
+                lock (avaliableSilos)
+                {
+                    nextSiloAddress = avaliableSilos.OrderBy(x => x.Value).First().Key; //get least loaded silo
+                    avaliableSilos[nextSiloAddress]++;  //increment usage of silo
 
-                avaliableSilos[nextSiloAddress]++;  //increment usage of silo
+                }
 
                 return Task.FromResult(nextSiloAddress);
 
@@ -105,7 +108,8 @@ namespace SiloSimpleHost
                 return services.BuildServiceProvider();
             }
         }
-
+        
+        #region execution for testing
 
         static async Task DoTheGoodJob(IClusterClient client, int i)
         {
@@ -134,15 +138,17 @@ namespace SiloSimpleHost
             await hiGrain3.SayHello(string.Format("i'm here number {0}", i + 200));
 
         }
+
+        #endregion
+
         static void Main(string[] args)
         {
             // First, configure and start a local silo
             var siloConfig = ClusterConfiguration.LocalhostPrimarySilo();
-
             siloConfig.UseStartupType<TestStartup>(); // inject our custom service
 
-
             var silo = new SiloHost("TestSilo", siloConfig);
+            
             silo.InitializeOrleansSilo();
             silo.StartOrleansSilo();
 
@@ -160,7 +166,10 @@ namespace SiloSimpleHost
 
                     await DoTheGoodJob(client, i);
                 }
-            }).ContinueWith(async prev =>
+            });
+
+            //if unccomment this line we'll get messed number of activations
+            Task.Run(async () =>
             {
                 for (var i = 1; i <= 5000; i++)
                 {
@@ -168,16 +177,6 @@ namespace SiloSimpleHost
                     await DoTheBadJob(client, i);
                 }
             });
-
-            //if unccomment this line we'll get messed number of activations
-            //Task.Run(async () =>
-            //{
-            //    for (var i = 1; i <= 5000; i++)
-            //    {
-
-            //        await DoTheBadJob(client, i);
-            //    }
-            //});
 
 
 
